@@ -51,6 +51,39 @@ describe('createBall', () => {
   it('rejects extraRuns without an extra type', () => {
     expect(() => createBall({ extraRuns: 2 })).toThrow();
   });
+
+  it('requires wides and no-balls to include the mandatory penalty run', () => {
+    expect(() => createBall({ extra: 'wide', extraRuns: 0 })).toThrow();
+    expect(() => createBall({ extra: 'noball', extraRuns: 0 })).toThrow();
+  });
+
+  it('rejects batter runs combined with wides, byes, or leg-byes', () => {
+    expect(() => createBall({ runsOffBat: 1, extra: 'wide' })).toThrow();
+    expect(() => createBall({ runsOffBat: 1, extra: 'bye', extraRuns: 1 })).toThrow();
+    expect(() => createBall({ runsOffBat: 1, extra: 'legbye', extraRuns: 1 })).toThrow();
+  });
+
+  it('supports byes and leg-byes on a no-ball separately from its penalty', () => {
+    expect(createBall({ extra: 'noball', extraRuns: 3, noBallExtra: 'bye' })).toEqual({
+      runsOffBat: 0,
+      extra: 'noball',
+      extraRuns: 3,
+      wicket: null,
+      noBallExtra: 'bye',
+    });
+    expect(() => createBall({ extra: 'noball', extraRuns: 1, noBallExtra: 'bye' })).toThrow();
+    expect(() => createBall({ extra: 'wide', extraRuns: 2, noBallExtra: 'bye' })).toThrow();
+  });
+
+  it('supports a no-ball boundary off the bat', () => {
+    const ball = createBall({ extra: 'noball', runsOffBat: 4 });
+    expect(ballRuns(ball)).toBe(5);
+    expect(isLegalBall(ball)).toBe(false);
+  });
+
+  it('supports multiple runs completed on a wide', () => {
+    expect(ballRuns(createBall({ extra: 'wide', extraRuns: 3 }))).toBe(3);
+  });
 });
 
 describe('isLegalBall', () => {
@@ -126,6 +159,12 @@ describe('formatOvers', () => {
   it('supports a custom balls-per-over', () => {
     expect(formatOvers(8, 4)).toBe('2.0');
     expect(formatOvers(9, 4)).toBe('2.1');
+  });
+
+  it('rejects invalid ball counts and balls-per-over values', () => {
+    expect(() => formatOvers(-1)).toThrow();
+    expect(() => formatOvers(1.5)).toThrow();
+    expect(() => formatOvers(6, 0)).toThrow();
   });
 });
 

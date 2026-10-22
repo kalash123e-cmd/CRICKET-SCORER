@@ -41,7 +41,13 @@ function validateWicket(wicket, extra) {
   }
 }
 
-export function createBall({ runsOffBat = 0, extra = null, extraRuns, wicket = null } = {}) {
+export function createBall({
+  runsOffBat = 0,
+  extra = null,
+  extraRuns,
+  noBallExtra = null,
+  wicket = null,
+} = {}) {
   if (!isNonNegativeInteger(runsOffBat)) {
     throw new Error(`runsOffBat must be a non-negative integer, got ${runsOffBat}`);
   }
@@ -60,13 +66,32 @@ export function createBall({ runsOffBat = 0, extra = null, extraRuns, wicket = n
   if (extra === null && extraRuns !== 0) {
     throw new Error('extraRuns given without an extra type');
   }
+  if (ILLEGAL_EXTRAS.includes(extra) && extraRuns < 1) {
+    throw new Error(`${extra} must include its 1-run penalty`);
+  }
+  if ((extra === 'wide' || extra === 'bye' || extra === 'legbye') && runsOffBat !== 0) {
+    throw new Error(`runsOffBat must be 0 for a ${extra}`);
+  }
+  if (noBallExtra !== null) {
+    if (extra !== 'noball' || !['bye', 'legbye'].includes(noBallExtra)) {
+      throw new Error('noBallExtra must be bye or legbye on a no-ball');
+    }
+    if (runsOffBat !== 0 || extraRuns < 2) {
+      throw new Error('A no-ball with byes or leg-byes must include at least one run of that extra');
+    }
+  }
 
   if (wicket !== null) {
+    if (typeof wicket !== 'object' || Array.isArray(wicket)) {
+      throw new Error('wicket must be an object or null');
+    }
     validateWicket(wicket, extra);
     wicket = { type: wicket.type, playerOut: wicket.playerOut }; // store a clean copy
   }
 
-  return { runsOffBat, extra, extraRuns, wicket };
+  const ball = { runsOffBat, extra, extraRuns, wicket };
+  if (noBallExtra !== null) ball.noBallExtra = noBallExtra;
+  return ball;
 }
 
 // Does this delivery count as one of the six balls in an over?
