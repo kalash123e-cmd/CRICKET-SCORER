@@ -72,7 +72,7 @@ describe('ballRuns', () => {
 
   it('adds the wide penalty and any runs run', () => {
     expect(ballRuns(wide())).toBe(1);
-    expect(ballRuns(wide(4))).toBe(4); // wide that went to the boundary
+    expect(ballRuns(wide(4))).toBe(4); // 1 penalty + 3 run
   });
 
   it('adds the no-ball penalty to runs off the bat', () => {
