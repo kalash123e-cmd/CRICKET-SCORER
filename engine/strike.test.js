@@ -162,3 +162,110 @@ describe('currentBatters (replaying a list of balls)', () => {
     expect(opening).toEqual({ striker: 'A', nonStriker: 'B' });
   });
 });
+
+// ---------- wickets ----------
+const out = (type, playerOut = 'A', rest = {}) =>
+  createBall({ ...rest, wicket: { type, playerOut } });
+
+describe('nextBatters: wickets', () => {
+  it('puts the new batter on strike when the striker is bowled', () => {
+    expect(nextBatters(start, out('bowled', 'A'), 0, 6, 'C')).toEqual({
+      striker: 'C',
+      nonStriker: 'B',
+    });
+  });
+
+  it('works the same way for a catch', () => {
+    expect(nextBatters(start, out('caught', 'A'), 0, 6, 'C')).toEqual({
+      striker: 'C',
+      nonStriker: 'B',
+    });
+  });
+
+  it('after a wicket on the last ball of the over, the not-out batter faces next', () => {
+    expect(nextBatters(start, out('bowled', 'A'), 5, 6, 'C')).toEqual({
+      striker: 'B',
+      nonStriker: 'C',
+    });
+  });
+
+  it('a stumping off a wide does not end the over', () => {
+    const ball = out('stumped', 'A', { extra: 'wide' });
+    expect(nextBatters(start, ball, 5, 6, 'C')).toEqual({ striker: 'C', nonStriker: 'B' });
+  });
+
+  it('replaces the non-striker when the non-striker is run out with no runs completed', () => {
+    expect(nextBatters(start, out('runout', 'B'), 0, 6, 'C')).toEqual({
+      striker: 'A',
+      nonStriker: 'C',
+    });
+  });
+
+  it('run out after completing one run: the batters have crossed first', () => {
+    // A and B cross (1 run), then A is run out going for the second.
+    // After crossing: B is on strike, A is at the other end -> C replaces A there.
+    const ball = out('runout', 'A', { runsOffBat: 1 });
+    expect(nextBatters(start, ball, 0, 6, 'C')).toEqual({ striker: 'B', nonStriker: 'C' });
+  });
+
+  it('run out of the other batter after one run puts the new batter on strike', () => {
+    // After crossing: B is on strike. B is run out -> C takes the striker end.
+    const ball = out('runout', 'B', { runsOffBat: 1 });
+    expect(nextBatters(start, ball, 0, 6, 'C')).toEqual({ striker: 'C', nonStriker: 'A' });
+  });
+
+  it('leaves an empty slot when nobody is left to come in (last wicket)', () => {
+    expect(nextBatters(start, out('bowled', 'A'), 0)).toEqual({
+      striker: null,
+      nonStriker: 'B',
+    });
+  });
+
+  it('throws if the dismissed player is not at the crease', () => {
+    expect(() => nextBatters(start, out('bowled', 'Z'), 0, 6, 'C')).toThrow();
+  });
+
+  it('does not mutate the input batters', () => {
+    const input = { striker: 'A', nonStriker: 'B' };
+    nextBatters(input, out('bowled', 'A'), 0, 6, 'C');
+    expect(input).toEqual({ striker: 'A', nonStriker: 'B' });
+  });
+});
+
+describe('currentBatters with wickets', () => {
+  it('brings in the next batter from the batting order', () => {
+    expect(currentBatters([out('bowled', 'A')], start, 6, ['C', 'D'])).toEqual({
+      striker: 'C',
+      nonStriker: 'B',
+    });
+  });
+
+  it('brings in batters in order across several wickets', () => {
+    const balls = [out('bowled', 'A'), out('lbw', 'C')];
+    expect(currentBatters(balls, start, 6, ['C', 'D', 'E'])).toEqual({
+      striker: 'D',
+      nonStriker: 'B',
+    });
+  });
+
+  it('handles a wicket on the sixth legal ball of an over', () => {
+    const balls = [...repeat(dot(), 5), out('bowled', 'A')];
+    expect(currentBatters(balls, start, 6, ['C'])).toEqual({
+      striker: 'B',
+      nonStriker: 'C',
+    });
+  });
+
+  it('leaves an empty slot when the batting order runs out', () => {
+    expect(currentBatters([out('bowled', 'A')], start, 6, [])).toEqual({
+      striker: null,
+      nonStriker: 'B',
+    });
+  });
+
+  it('does not change the yetToBat list you pass in', () => {
+    const queue = ['C', 'D'];
+    currentBatters([out('bowled', 'A')], start, 6, queue);
+    expect(queue).toEqual(['C', 'D']);
+  });
+});

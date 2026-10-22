@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { createBall, isLegalBall, ballRuns } from './ball.js';
+import { createBall, isLegalBall, ballRuns, isWicket, isBowlerWicket } from './ball.js';
 import {
   legalBallCount,
   totalRuns,
+  wicketCount,
+  isAllOut,
+  isInningsComplete,
   formatOvers,
   runRate,
   isInningsOver,
@@ -17,10 +20,12 @@ const noBall = (runsOffBat = 0) => createBall({ extra: 'noball', runsOffBat });
 const bye = (n) => createBall({ extra: 'bye', extraRuns: n });
 const legBye = (n) => createBall({ extra: 'legbye', extraRuns: n });
 const repeat = (ball, n) => Array.from({ length: n }, () => ball);
+const out = (type, playerOut = 'A', rest = {}) =>
+  createBall({ ...rest, wicket: { type, playerOut } });
 
 describe('createBall', () => {
   it('defaults to a dot ball', () => {
-    expect(createBall()).toEqual({ runsOffBat: 0, extra: null, extraRuns: 0 });
+    expect(createBall()).toEqual({ runsOffBat: 0, extra: null, extraRuns: 0, wicket: null });
   });
 
   it('gives a wide or no-ball 1 extra run by default', () => {
@@ -157,6 +162,7 @@ describe('summarizeInnings', () => {
   it('summarizes an empty innings', () => {
     expect(summarizeInnings([])).toEqual({
       runs: 0,
+      wickets: 0,
       legalBalls: 0,
       completedOvers: 0,
       ballsInCurrentOver: 0,
@@ -194,5 +200,114 @@ describe('summarizeInnings', () => {
     const copy = JSON.parse(JSON.stringify(balls));
     summarizeInnings(balls);
     expect(balls).toEqual(copy);
+  });
+});
+
+describe('createBall: wickets', () => {
+  it('has no wicket by default', () => {
+    expect(createBall().wicket).toBeNull();
+  });
+
+  it('stores a wicket with its type and the player who is out', () => {
+    expect(out('bowled', 'A').wicket).toEqual({ type: 'bowled', playerOut: 'A' });
+  });
+
+  it('rejects an unknown wicket type', () => {
+    expect(() => out('exploded')).toThrow();
+  });
+
+  it('rejects a wicket with no player out', () => {
+    expect(() => createBall({ wicket: { type: 'bowled' } })).toThrow();
+    expect(() => createBall({ wicket: { type: 'bowled', playerOut: '' } })).toThrow();
+  });
+
+  it('allows stumped, run out and hit wicket off a wide', () => {
+    expect(() => out('stumped', 'A', { extra: 'wide' })).not.toThrow();
+    expect(() => out('runout', 'A', { extra: 'wide' })).not.toThrow();
+    expect(() => out('hitwicket', 'A', { extra: 'wide' })).not.toThrow();
+  });
+
+  it('rejects bowled, caught and lbw off a wide', () => {
+    expect(() => out('bowled', 'A', { extra: 'wide' })).toThrow();
+    expect(() => out('caught', 'A', { extra: 'wide' })).toThrow();
+    expect(() => out('lbw', 'A', { extra: 'wide' })).toThrow();
+  });
+
+  it('allows only a run out off a no-ball', () => {
+    expect(() => out('runout', 'A', { extra: 'noball' })).not.toThrow();
+    expect(() => out('bowled', 'A', { extra: 'noball' })).toThrow();
+    expect(() => out('caught', 'A', { extra: 'noball' })).toThrow();
+  });
+
+  it('does not keep a reference to the object you passed in', () => {
+    const input = { type: 'bowled', playerOut: 'A' };
+    const ball = createBall({ wicket: input });
+    input.playerOut = 'Z';
+    expect(ball.wicket.playerOut).toBe('A');
+  });
+});
+
+describe('isWicket and isBowlerWicket', () => {
+  it('isWicket is false for a normal ball and true for a dismissal', () => {
+    expect(isWicket(dot())).toBe(false);
+    expect(isWicket(out('bowled'))).toBe(true);
+  });
+
+  it('credits the bowler for bowled, caught, lbw, stumped and hit wicket', () => {
+    for (const type of ['bowled', 'caught', 'lbw', 'stumped', 'hitwicket']) {
+      expect(isBowlerWicket(out(type))).toBe(true);
+    }
+  });
+
+  it('does not credit the bowler for a run out', () => {
+    expect(isBowlerWicket(out('runout'))).toBe(false);
+  });
+
+  it('is false when there is no wicket', () => {
+    expect(isBowlerWicket(dot())).toBe(false);
+  });
+
+  it('a wicket does not change whether the ball is legal', () => {
+    expect(isLegalBall(out('bowled'))).toBe(true);
+    expect(isLegalBall(out('stumped', 'A', { extra: 'wide' }))).toBe(false);
+  });
+
+  it('runs scored on a run-out ball still count', () => {
+    expect(ballRuns(out('runout', 'A', { runsOffBat: 1 }))).toBe(1);
+  });
+});
+
+describe('wicketCount, isAllOut, isInningsComplete', () => {
+  it('counts wickets', () => {
+    expect(wicketCount([])).toBe(0);
+    expect(wicketCount([dot(), out('bowled'), runs(1), out('caught', 'B')])).toBe(2);
+  });
+
+  it('is all out only when max wickets have fallen (default 10)', () => {
+    expect(isAllOut(repeat(out('bowled'), 9))).toBe(false);
+    expect(isAllOut(repeat(out('bowled'), 10))).toBe(true);
+  });
+
+  it('supports a custom number of wickets (smaller teams)', () => {
+    expect(isAllOut(repeat(out('bowled'), 7), 7)).toBe(true);
+    expect(isAllOut(repeat(out('bowled'), 6), 7)).toBe(false);
+  });
+
+  it('completes the innings when overs run out', () => {
+    expect(isInningsComplete(repeat(dot(), 6), 1)).toBe(true);
+  });
+
+  it('completes the innings when all out, even with overs left', () => {
+    expect(isInningsComplete(repeat(out('bowled'), 10), 20)).toBe(true);
+  });
+
+  it('is not complete with overs left and wickets in hand', () => {
+    expect(isInningsComplete([dot(), out('bowled')], 20)).toBe(false);
+  });
+
+  it('includes wickets in the innings summary', () => {
+    const summary = summarizeInnings([runs(4), out('bowled'), runs(1), out('runout', 'B')]);
+    expect(summary.wickets).toBe(2);
+    expect(summary.runs).toBe(5);
   });
 });
